@@ -1,2 +1,2 @@
 #!/bin/bash
-docker run -it --rm -v $(pwd):/work my-systemc bash
+docker run -it --rm -v $(pwd):/work sysc-die bash
