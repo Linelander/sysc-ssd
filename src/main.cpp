@@ -13,28 +13,29 @@ struct page {
 };
 
 struct block {
-	sc_mutex mutex;
 	page pages[PAGES_PER_BLOCK];
 };
 
 struct plane {
+	sc_mutex mutex; // for parallel plane reads
 	block blocks[BLOCKS_PER_PLANE];
 };
 
 struct die {
+	sc_mutex mutex; // for most things
 	plane planes[PLANES_PER_DIE];
 };
 
 die die;
 
 void program(int pl, int b, int pa) {
-	block &parent_block = die.planes[pl].blocks[b];
-	parent_block.mutex.lock();
-	parent_block.pages[pa].mutex.lock();
-	wait(ERS_TIME);
-	wait(PROG_TIME);
-	parent_block.pages[pa].mutex.unlock();
-	parent_block.mutex.unlock();
+	// block &parent_block = die.planes[pl].blocks[b];
+	// parent_block.mutex.lock();
+	// parent_block.pages[pa].mutex.lock();
+	// wait(ERS_TIME);
+	// wait(PROG_TIME);
+	// parent_block.pages[pa].mutex.unlock();
+	// parent_block.mutex.unlock();
 }
 
 int sc_main(int argc, char **argv) {
