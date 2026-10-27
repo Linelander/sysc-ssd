@@ -1,24 +1,5 @@
-CXX = g++
-CXXFLAGS = -Wall -g -I$(SYSTEMC_HOME)/include
+main: main.o
+	g++ -o main main.o -L/usr/local/systemc/lib -Wl,-rpath,/usr/local/systemc/lib -lsystemc
 
-TARGET = main
-SRCS = $(shell find src -name '*.cpp')
-OBJS = $(SRCS:.cpp=.o)
-
-SYSTEMC_HOME ?= /usr/local/systemc
-LDFLAGS  = -L$(SYSTEMC_HOME)/lib -Wl,-rpath,$(SYSTEMC_HOME)/lib
-LDLIBS   = -lsystemc
-
-all: $(TARGET)
-
-$(TARGET): $(OBJS)
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
-
-%.o: %.cpp
-	$(CXX) $(CXXFLAGS) -c  $< -o $@
-
-run: $(TARGET)
-	./$(TARGET)
-
-clean:
-	rm -f $(TARGET) $(OBJS)
+main.o: src/main.cpp
+	g++ -c -I/usr/local/systemc/include src/main.cpp -o main.o
