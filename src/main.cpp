@@ -2,6 +2,7 @@
 #include <iostream>
 #include <sysc/kernel/sc_externs.h>
 #include <sysc/kernel/sc_module.h>
+#include <sysc/kernel/sc_simcontext.h>
 #include <systemc.h>
 
 #define PAGES_PER_BLOCK 64
@@ -38,12 +39,25 @@ struct ssd {
 
 struct ssd drive;
 
-void program(int d, int pl, int b, int pa) {
-	struct block &blk = drive.dies[d].planes[pl].blocks[b];
-	blk.wear++; // how much time should wear add? see OFNI manual?
-	wait(ERS_TIME);
+sc_time program(int d, int pl, int b, int pa) {
+	sc_time start = sc_time_stamp();
+
+	drive.dies[d].mutex.lock();
 	wait(PROG_TIME);
 	drive.dies[d].mutex.unlock();
+
+	return sc_time_stamp() - start;
+}
+
+sc_time erase(int d, int pl, int b) {
+	sc_time start = sc_time_stamp();
+
+	drive.dies[d].mutex.lock();
+	wait(ERS_TIME);
+	drive.dies[d].planes[pl].blocks[b].wear++; // TODO scalar. faster for pages but longer for blocks
+	drive.dies[d].mutex.unlock();
+
+	return sc_time_stamp() - start;
 }
 
 SC_MODULE(Host) {
@@ -51,20 +65,10 @@ SC_MODULE(Host) {
 		SC_THREAD(run);
 	}
 	void run() {
-		if (sc_argc() < 6) {
-			std::cerr << "use like: ./main <num programs>\n";
-			return;
-		}
-		for (int i = 0; i < std::atoi(sc_argv()[1]); i++) {
-			int d = std::atoi(sc_argv()[2]);
-			int pl = std::atoi(sc_argv()[3]);
-			int b = std::atoi(sc_argv()[4]);
-			int pa = std::atoi(sc_argv()[5]);
-			program(d, pl, b, pa);
-		}
+		
+		// TODO: process requests here. could be a CSV of target pages.
 	}
 };
-
 
 int sc_main(int argc, char **argv) {
 	cout << endl << DIES_PER_SSD << " dies" << endl;
@@ -77,18 +81,8 @@ int sc_main(int argc, char **argv) {
 	int b = std::atoi(argv[4]);
 	int pa = std::atoi(argv[5]);
 
-	drive.dies[d].mutex.lock();
-	cout << endl << "LOCKING die " << d << endl;
-	cout << "WEARING and ERASING " << "block " << b << " of its plane " << pl << endl;
-	cout << "PROGRAMING its page " << pa << endl;
-	cout << "Repeating the above " << argv[1] << " times" << endl << endl;
-
 	Host host("host");
-	auto start = std::chrono::steady_clock::now();
 	sc_start();
-	auto end = std::chrono::steady_clock::now();
-	std::chrono::duration<double, std::milli> elapsed = end - start;
 
-	cout << "TIME SPENT: " << elapsed.count() << " MILLISECONDS" << endl;
 	return 0;
 }
