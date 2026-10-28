@@ -1,4 +1,5 @@
 	#include <cstring>
+#include <sysc/kernel/sc_simcontext.h>
 	#include <iostream>
 	#include <systemc.h>
 	#include <optional>
@@ -110,12 +111,16 @@
 			char line[256];
 			fgets(line, sizeof(line), csvin);
 			
+			fprintf(csvout, "op,die,plane,block,page,issued_us,completed_us,latency_us\n");
 
 			int line_num = 0;
 			while (fgets(line, sizeof line, csvin)) {
+				double iss = sc_time_stamp() / sc_time(1, SC_US);
+				
 				char op[8];
 				int d, pl, b, pa;
 				int n = sscanf(line, "%7[^,],%d,%d,%d,%d", op, &d, &pl, &b, &pa);
+
 				if (n != 5) {
 					cerr << "bad CSVin line " << line_num << ": " << line;	
 					continue;
@@ -131,13 +136,15 @@
 				if (strcmp(op, "eras") == 0) {
 					optime = nand_erase(d, pl, b);
 				}
+				double opt_d = 0;
+				double done = sc_time_stamp() / sc_time(1, SC_US);
 				if (optime) {
 					sumlat += *optime;
-					optime = *optime;
+					opt_d = *optime / sc_time(1, SC_US);
+					fprintf(csvout, "%s,%d,%d,%d,%d,%.0f,%.0f,%.0f\n", op, d, pl, b, pa, iss, done, opt_d);
+				} else { // FAILURE
+					fprintf(csvout, "%s,%d,%d,%d,%d,%.0f,%.0f,\n", op, d, pl, b, pa, iss, done);
 				}
-				char* newline = NULL;
-				double opt_d = *optime / sc_time(1, SC_US);
-				fprintf(csvout, "TODO", op, d, pl, b, pa, opt_d);
 				line_num++;
 			}
 			sc_time end = sc_time_stamp();
@@ -176,7 +183,3 @@
 		fclose(fout);
 		return 0;
 	}
-
-
-	// TODO need to decide what sort of data to record for the analyzer...
-	// Maybe just a log of every op and its timestamp + length and destination
