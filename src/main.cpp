@@ -2,6 +2,7 @@
 #include <iostream>
 #include <sysc/kernel/sc_externs.h>
 #include <sysc/kernel/sc_module.h>
+#include <sysc/kernel/sc_simcontext.h>
 	#include <systemc.h>
 	#include <optional>
 
@@ -23,7 +24,7 @@
 
 	struct page {
 		sc_mutex mutex;
-		State state = INVALID;
+		State state = ERASED;
 	};
 
 	struct block {
@@ -107,32 +108,41 @@
 		void run() {
 			char line[256];
 			fgets(line, sizeof(line), csv);
-			sc_time total(0, SC_US);
+			sc_time sumlat(0, SC_US);
+			int line_num = 0;
+			sc_time start = sc_time_stamp();
 			while (fgets(line, sizeof line, csv)) {
 				char op[8];
 				int d, pl, b, pa;
 				int n = sscanf(line, "%7[^,],%d,%d,%d,%d", op, &d, &pl, &b, &pa);
-				
+				if (n != 5) {
+					cerr << "bad CSV line " << line_num << ": " << line;	
+					continue;
+				}
+
 				if (strcmp(op, "prog") == 0) {
 					auto optime = nand_program(d, pl, b, pa);
 					if (optime) {
-						total += *optime;
+						sumlat += *optime;
 					}
 				}
 				if (strcmp(op, "read") == 0) {
 					auto optime = nand_read(d, pl, b, pa);
 					if (optime) {
-						total += *optime;
+						sumlat += *optime;
 					}
 				}
 				if (strcmp(op, "eras") == 0) {
 					auto optime = nand_erase(d, pl, b);
 					if (optime) {
-						total += *optime;
+						sumlat += *optime;
 					}
 				}
+				line_num++;
 			}
-			cout << "TOTAL SIM TIME: " << total << endl;
+			sc_time end = sc_time_stamp();
+			cout << "Summed Latency: " << sumlat << endl;
+			cout << "Total Runtime: " << end - start << endl;
 		}
 	};
 
@@ -143,13 +153,13 @@
 		cout << PAGES_PER_BLOCK << " pages per block" << endl;
 
 		if (argc < 2) {
-			perror("usage: ./main <trace_filename>");
+			cerr << "usage: ./main <trace_filename>";
 			return 1;
 		}
 
 		FILE *f = fopen(sc_argv()[1], "r");
 		if (f == NULL) {
-			std::cerr << "bad fopen!";
+			perror("bad fopen!");
 			return 1;
 		}
 
