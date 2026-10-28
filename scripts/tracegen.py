@@ -11,7 +11,7 @@ parser.add_argument("rows", help="number of rows to generate")
 parser.add_argument("dies", help="num dies")
 parser.add_argument("planes", help="num planes per die")
 parser.add_argument("blocks", help="num blocks per plane")
-parser.add_argument("pages", help="num pages per block") # blank for erase ops
+parser.add_argument("pages", help="num pages per block")
 
 args = parser.parse_args()
 

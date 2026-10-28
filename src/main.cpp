@@ -143,7 +143,7 @@
 					opt_d = *optime / sc_time(1, SC_US);
 					fprintf(csvout, "%s,%d,%d,%d,%d,%.0f,%.0f,%.0f\n", op, d, pl, b, pa, iss, done, opt_d);
 				} else { // FAILURE
-					fprintf(csvout, "%s,%d,%d,%d,%d,%.0f,%.0f,\n", op, d, pl, b, pa, iss, done);
+					fprintf(csvout, "%s,%d,%d,%d,%d,%.0f,%.0f,\n", op, d, pl, b, pa, iss, done); // no latency
 				}
 				line_num++;
 			}
