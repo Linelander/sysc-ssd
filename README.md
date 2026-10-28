@@ -1,0 +1,1 @@
+Small, simple SSD simulator, trace generator, and analysis scripts written by hand to practice SystemC.
