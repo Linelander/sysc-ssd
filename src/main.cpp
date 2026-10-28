@@ -1,9 +1,4 @@
-	#include <chrono>
-#include <sysc/kernel/sc_time.h>
 	#include <iostream>
-	#include <sysc/kernel/sc_externs.h>
-	#include <sysc/kernel/sc_module.h>
-	#include <sysc/kernel/sc_simcontext.h>
 	#include <systemc.h>
 
 	#define PAGES_PER_BLOCK 64
@@ -40,7 +35,7 @@
 
 	struct ssd drive;
 
-	sc_time program(int d, int pl, int b, int pa) {
+	sc_time nand_program(int d, int pl, int b, int pa) {
 		sc_time start = sc_time_stamp();
 
 		drive.dies[d].mutex.lock();
@@ -50,7 +45,7 @@
 		return sc_time_stamp() - start;
 	}
 
-	sc_time erase(int d, int pl, int b) {
+	sc_time nand_erase(int d, int pl, int b) {
 		sc_time start = sc_time_stamp();
 
 		drive.dies[d].mutex.lock();
@@ -61,7 +56,7 @@
 		return sc_time_stamp() - start;
 	}
 
-	sc_time read(int d, int pl, int b, int pa) {
+	sc_time nand_read(int d, int pl, int b, int pa) {
 		sc_time start = sc_time_stamp();
 
 		drive.dies[d].mutex.lock();
@@ -76,8 +71,7 @@
 			SC_THREAD(run);
 		}
 		void run() {
-			
-			// TODO: process requests here. could be a CSV of target pages.
+			// CSV: P/E, d, pl, b, pa?
 		}
 	};
 
