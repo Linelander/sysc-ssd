@@ -1,8 +1,5 @@
 	#include <cstring>
-#include <iostream>
-#include <sysc/kernel/sc_externs.h>
-#include <sysc/kernel/sc_module.h>
-#include <sysc/kernel/sc_simcontext.h>
+	#include <iostream>
 	#include <systemc.h>
 	#include <optional>
 
