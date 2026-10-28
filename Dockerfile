@@ -3,6 +3,7 @@ FROM debian:trixie
 
 RUN apt-get update && apt-get install -y \
 build-essential cmake libsystemc-dev man-db \
+python3 python3-venv \
 && rm -rf /var/lib/apt/lists/*
 
 
