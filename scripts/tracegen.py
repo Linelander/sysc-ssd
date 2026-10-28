@@ -29,7 +29,7 @@ with open(args.filename, mode='w', newline='') as file:
 		block = random.randint(0, int(args.blocks)-1)
 		page = random.randint(0, int(args.pages)-1)
 
-		if op == "erase":
+		if op == "eras":
 			newrow = [op, die, plane, block, -1]
 		else:
 			newrow = newrow = [op, die, plane, block, page]

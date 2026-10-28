@@ -94,47 +94,50 @@
 	SC_MODULE(Host) {
 		SC_HAS_PROCESS(Host);
 		// members go here
-		FILE *csv;
+		FILE *csvin;
+		FILE *csvout;
 
 		// constructor
-		Host(sc_module_name name, FILE *f) : sc_module(name), csv(f) {
+		Host(sc_module_name name, FILE *fin, FILE *fout) : sc_module(name), csvin(fin), csvout(fout) {
 			SC_THREAD(run);
 		}
 
 		// thread
 		void run() {
-			char line[256];
-			fgets(line, sizeof(line), csv);
-			sc_time sumlat(0, SC_US);
-			int line_num = 0;
 			sc_time start = sc_time_stamp();
-			while (fgets(line, sizeof line, csv)) {
+			sc_time sumlat(0, SC_US);
+
+			char line[256];
+			fgets(line, sizeof(line), csvin);
+			
+
+			int line_num = 0;
+			while (fgets(line, sizeof line, csvin)) {
 				char op[8];
 				int d, pl, b, pa;
 				int n = sscanf(line, "%7[^,],%d,%d,%d,%d", op, &d, &pl, &b, &pa);
 				if (n != 5) {
-					cerr << "bad CSV line " << line_num << ": " << line;	
+					cerr << "bad CSVin line " << line_num << ": " << line;	
 					continue;
 				}
 
+				std::optional<sc_time> optime;
 				if (strcmp(op, "prog") == 0) {
-					auto optime = nand_program(d, pl, b, pa);
-					if (optime) {
-						sumlat += *optime;
-					}
+					optime = nand_program(d, pl, b, pa);
 				}
 				if (strcmp(op, "read") == 0) {
-					auto optime = nand_read(d, pl, b, pa);
-					if (optime) {
-						sumlat += *optime;
-					}
+					optime = nand_read(d, pl, b, pa);
 				}
 				if (strcmp(op, "eras") == 0) {
-					auto optime = nand_erase(d, pl, b);
-					if (optime) {
-						sumlat += *optime;
-					}
+					optime = nand_erase(d, pl, b);
 				}
+				if (optime) {
+					sumlat += *optime;
+					optime = *optime;
+				}
+				char* newline = NULL;
+				double opt_d = *optime / sc_time(1, SC_US);
+				fprintf(csvout, "TODO", op, d, pl, b, pa, opt_d);
 				line_num++;
 			}
 			sc_time end = sc_time_stamp();
@@ -154,15 +157,26 @@
 			return 1;
 		}
 
-		FILE *f = fopen(sc_argv()[1], "r");
-		if (f == NULL) {
+		FILE *fin = fopen(sc_argv()[1], "r");
+		if (fin == NULL) {
 			perror("bad fopen!");
 			return 1;
 		}
 
-		Host host("host", f);
+		FILE *fout = fopen(sc_argv()[2], "w");
+		if (fout == NULL) {
+			perror("bad fopen!");
+			return 1;
+		}
+
+		Host host("host", fin, fout);
 		sc_start();
 		
-		fclose(f);
+		fclose(fin);
+		fclose(fout);
 		return 0;
 	}
+
+
+	// TODO need to decide what sort of data to record for the analyzer...
+	// Maybe just a log of every op and its timestamp + length and destination
