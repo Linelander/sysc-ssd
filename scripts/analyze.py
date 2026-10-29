@@ -1,5 +1,6 @@
 import pandas as pd
-import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
 import argparse
 
 parser = argparse.ArgumentParser(description="Analyzes SSD model output")
@@ -64,27 +65,66 @@ print("blocks never erased")
 print(2*2*16 - len(e_perbl_ct)) # because e_perbl_ct is the blocks that WERE erased
 
 # --- Derived columns ---
+
 # 10. Add a service_us column (prog=40, read=10, eras=1000) and a
 #     queue_us column = latency_us - service_us. Confirm queue_us is all 0.
-sdf["service_us"] = sdf["op"].map({"prog": 40, "read": 10, "eras": 1000}) 
-# print(sdf.to_string())
-sdf["queue_us"] = sdf["latency_us"] - sdf["service_us"]
-# print(sdf[["op", "queue_us"]].to_string())
+sdf["service_us"] = sdf["op"].map({"prog": 40, "read": 10, "eras": 1000})  	# busy time (w/o wait)
+sdf["queue_us"] = sdf["latency_us"] - sdf["service_us"]						# wait time
+
 # 11. Total simulated runtime: last completion minus first issue.
 print()
-print("Total runtime: " + str(sdf.tail(1)["completed_us"].iloc[0] - sdf.head(1)["issued_us"].iloc[0]) + " microseconds")
+tr = sdf.tail(1)["completed_us"].iloc[0] - sdf.head(1)["issued_us"].iloc[0]
+print("Total runtime: " + str(tr) + " microseconds")
 
 # 12. Per-die utilization: busy time (sum of service_us) / total runtime.
+print()
+pdu_su = sdf.groupby("die")["service_us"].sum() / tr
+print("per die util: " + pdu_su.to_string())
 
 # --- Throughput ---
 # 13. Operations completed per millisecond, bucketed by completion time.
 #     (Hint: integer-divide completed_us by 1000, then group.)
+print()
+# print("ops per ms bucket")
+sdf["ms_bucket"] = sdf["completed_us"] // 1000
+tp_ms = sdf.groupby("ms_bucket").size()
+# print(tp_ms.to_string())
+
 
 # --- Plots (save to results/, don't show) ---
 # 14. Bar chart: successful ops per op type.
+figbar, bar = plt.subplots()
+success_by_op = sdf.groupby("op").size()
+bar.bar(success_by_op.index, success_by_op.values)
+bar.set_title("Successes by op")
+bar.set_xlabel("Op type")
+bar.set_ylabel("Success count")
+figbar.savefig("results/sops_bar.png")
+
 # 15. Bar chart: utilization per die.
+figbar2, bar2 = plt.subplots()
+bar2.bar(pdu_su.index, pdu_su.values)
+bar2.set_title("per die util")
+bar2.set_xlabel("die")
+bar2.set_ylabel("util (us)")
+figbar2.savefig("results/pdu_bar.png")
+
 # 16. Histogram of erase counts per block.
+fighist, hist = plt.subplots()
+hist.hist(e_perbl_ct)
+hist.set_title("erase counts distribution across blocks")
+hist.set_xlabel("erase count")
+hist.set_ylabel("number of blocks")
+fighist.savefig("results/epbl_hist.png")
+
 # 17. Line plot: throughput over time from #13.
+figline, line = plt.subplots()
+line.plot(tp_ms.index, tp_ms.values)
+line.set_title("ops throughput over time (ms)")
+line.set_xlabel("time (ms)")
+line.set_ylabel("ops")
+figline.savefig("results/tpms_line.png")
+
 
 # --- Stretch ---
 # 18. Throughput-weighted write amplification is N/A here, but compute
