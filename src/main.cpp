@@ -14,7 +14,7 @@ constexpr int MAX_WEAR = 10000000;
 // TODO: replace with timings from OFNI manual
 const sc_time TRANS_TIME(20, SC_US);
 const sc_time PROG_TIME(40, SC_US);
-const sc_time READ_TIME(10, SC_US);
+const sc_time SENSE_TIME(10, SC_US);
 const sc_time ERS_TIME(1000, SC_US);
 
 enum State {
@@ -24,7 +24,6 @@ enum State {
 };
 
 struct page {
-	sc_mutex pg_mut;
 	State state = ERASED;
 };
 
@@ -68,11 +67,34 @@ std::optional<sc_time> nand_erase(int d, int pl, int b) {
 	return sc_time_stamp() - start;
 }
 
+// Copying data to and from page cells and plane register
+std::optional<sc_time> nand_sense(int d, int pl) {
+	sc_time start = sc_time_stamp();
+	plane pln = drive.dies[d].planes[pl];
+	pln.pl_mut.lock();
+	wait(SENSE_TIME);
+	pln.pl_mut.unlock();
+	return sc_time_stamp() - start;
+}
+
+// Copying data to and from SSD controller and plane register
+std::optional<sc_time> nand_trans(int d) {
+	sc_time start = sc_time_stamp();
+	die &di = drive.dies[d];
+	di.pin_mut.lock();
+	wait(TRANS_TIME);
+	// Don't think we need to actually do anything else here...
+	di.pin_mut.unlock();
+	return sc_time_stamp() - start;
+}
+
+// TODO revamp
 std::optional<sc_time> nand_program(int d, int pl, int b, int pa) {
 	sc_time start = sc_time_stamp();
 	page &pg = drive.dies[d].planes[pl].blocks[b].pages[pa];
 
 	drive.dies[d].pin_mut.lock();
+
 	if (pg.state != ERASED) {
 		drive.dies[d].pin_mut.unlock();
 		return std::nullopt;
@@ -84,6 +106,7 @@ std::optional<sc_time> nand_program(int d, int pl, int b, int pa) {
 	return sc_time_stamp() - start;
 }
 
+// TODO revamp
 std::optional<sc_time> nand_read(int d, int pl, int b, int pa) {
 	sc_time start = sc_time_stamp();
 	page &pg = drive.dies[d].planes[pl].blocks[b].pages[pa];
