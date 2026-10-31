@@ -11,6 +11,8 @@ constexpr int PLANES_PER_DIE = 2;
 constexpr int DIES_PER_SSD = 2;
 constexpr int MAX_WEAR = 10000000;
 
+// TODO: replace with timings from OFNI manual
+const sc_time TRANS_TIME(20, SC_US);
 const sc_time PROG_TIME(40, SC_US);
 const sc_time READ_TIME(10, SC_US);
 const sc_time ERS_TIME(1000, SC_US);
@@ -22,7 +24,7 @@ enum State {
 };
 
 struct page {
-	sc_mutex mutex;
+	sc_mutex pg_mut;
 	State state = ERASED;
 };
 
@@ -33,13 +35,13 @@ struct block {
 };
 
 struct plane {
-	sc_mutex mutex; // for parallel plane reads
+	sc_mutex pl_mut; // for parallel plane reads
 	// struct block blocks[BLOCKS_PER_PLANE];
 	std::array<block, BLOCKS_PER_PLANE> blocks;
 };
 
 struct die {
-	sc_mutex mutex; // for most things
+	sc_mutex pin_mut; // for most things
 	// struct plane planes[PLANES_PER_DIE];
 	std::array<plane, PLANES_PER_DIE> planes;
 };
@@ -55,13 +57,13 @@ std::optional<sc_time> nand_erase(int d, int pl, int b) {
 	sc_time start = sc_time_stamp();
 	block &bl = drive.dies[d].planes[pl].blocks[b];
 
-	drive.dies[d].mutex.lock();
+	drive.dies[d].pin_mut.lock();
 	wait(ERS_TIME);
 	bl.wear++; // TODO scalar. faster for pages but longer for blocks
 	for (int i = 0; i < PAGES_PER_BLOCK; i++) {
 		bl.pages[i].state = ERASED;
 	}
-	drive.dies[d].mutex.unlock();
+	drive.dies[d].pin_mut.unlock();
 
 	return sc_time_stamp() - start;
 }
@@ -70,14 +72,14 @@ std::optional<sc_time> nand_program(int d, int pl, int b, int pa) {
 	sc_time start = sc_time_stamp();
 	page &pg = drive.dies[d].planes[pl].blocks[b].pages[pa];
 
-	drive.dies[d].mutex.lock();
+	drive.dies[d].pin_mut.lock();
 	if (pg.state != ERASED) {
-		drive.dies[d].mutex.unlock();
+		drive.dies[d].pin_mut.unlock();
 		return std::nullopt;
 	}
 	wait(PROG_TIME);
 	pg.state = VALID;
-	drive.dies[d].mutex.unlock();
+	drive.dies[d].pin_mut.unlock();
 
 	return sc_time_stamp() - start;
 }
@@ -86,13 +88,13 @@ std::optional<sc_time> nand_read(int d, int pl, int b, int pa) {
 	sc_time start = sc_time_stamp();
 	page &pg = drive.dies[d].planes[pl].blocks[b].pages[pa];
 
-	drive.dies[d].mutex.lock();
+	drive.dies[d].pin_mut.lock();
 	if (pg.state != VALID) {
-		drive.dies[d].mutex.unlock();
+		drive.dies[d].pin_mut.unlock();
 		return std::nullopt;
 	}
 	wait(READ_TIME);
-	drive.dies[d].mutex.unlock();
+	drive.dies[d].pin_mut.unlock();
 
 	return sc_time_stamp() - start;
 }
