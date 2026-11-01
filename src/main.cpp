@@ -60,11 +60,18 @@ struct ssd {
 
 struct ssd drive;
 
+/*
+	Locks a plane, then grabs a block, erases it, and wears it.
+	Then sets all pages in the block to ERASED
+
+	LOCKING ORDER: Plane, die
+*/
 std::optional<sc_time> nand_erase(int d, int pl, int b) {
 	sc_time start = sc_time_stamp();
-	block &bl = drive.dies[d].planes[pl].blocks[b];
+	plane &pln = drive.dies[d].planes[pl];
+	block &bl = pln.blocks[b];
 
-	Guard pin(drive.dies[d].pin_mut);
+	Guard pin(pln.pl_mut);
 	wait(ERS_TIME);
 	bl.wear++; // TODO scalar. faster for pages but longer for blocks
 	for (int i = 0; i < PAGES_PER_BLOCK; i++) {
@@ -77,6 +84,8 @@ std::optional<sc_time> nand_erase(int d, int pl, int b) {
 /*
 	Transfer data from the SSD controller to plane reg
 	Program them into the page
+
+	LOCKING ORDER: Plane, die
 */
 std::optional<sc_time> nand_program(int d, int pl, int b, int pa) {
 	sc_time start = sc_time_stamp();
@@ -106,6 +115,8 @@ std::optional<sc_time> nand_program(int d, int pl, int b, int pa) {
 /*
 	sense plane cells into plane register
 	transfer them to SSD controller
+
+	LOCKING ORDER: Plane, die
 */
 std::optional<sc_time> nand_read(int d, int pl, int b, int pa) {
 	sc_time start = sc_time_stamp();
@@ -177,21 +188,15 @@ SC_MODULE(Host) {
 			}
 
 			// Write timings to output
-			double opt_d = 0;
 			double done = sc_time_stamp() / sc_time(1, SC_US);
+			int ok = 0;
 			if (optime) {
 				sumlat += *optime;
-				opt_d = *optime / sc_time(1, SC_US);
-				fprintf(csvout,
-					"%s,%s,%d,%d,%d,%d,%d,%.0f,%.0f,%.0f\n",
-					name(), op, 1, d, pl, b, pa, iss, done,
-					opt_d);
-			} else { // FAILURE
-				fprintf(csvout,
-					"%s,%s,%d,%d,%d,%d,%d,%.0f,%.0f,\n",
-					name(), op, 0, d, pl, b, pa, iss,
-					done); // no latency
+				ok = 1;
 			}
+			fprintf(csvout, "%s,%s,%d,%d,%d,%d,%d,%.0f,%.0f,%.0f\n",
+				name(), op, ok, d, pl, b, pa, iss, done,
+				done - iss);
 			line_num++;
 		}
 		sc_time end = sc_time_stamp();
