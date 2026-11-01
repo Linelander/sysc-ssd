@@ -19,7 +19,7 @@ print(tot_by_type.to_string())
 # 2. Print the number of failures per op type.
 print()
 print("Fails per type")
-mask = df["latency_us"].isna()
+mask = df["ok"] == 1
 failed = df[mask].groupby("op")["op"].count()
 print(failed.to_string())
 
@@ -29,7 +29,7 @@ print(round((failed / tot_by_type) * 100, 2).to_string())
 
 # --- Filtering ---
 # 4. Make a DataFrame of only successful operations. Use it for the rest.
-sdf = df[df["latency_us"].notna()]
+sdf = df[df["ok"] == 1]
 
 # 5. How many reads succeeded on die 0, plane 1?
 print()
@@ -68,7 +68,7 @@ print(2*2*16 - len(e_perbl_ct)) # because e_perbl_ct is the blocks that WERE era
 
 # 10. Add a service_us column (prog=40, read=10, eras=1000) and a
 #     queue_us column = latency_us - service_us. Confirm queue_us is all 0.
-sdf["service_us"] = sdf["op"].map({"prog": 40, "read": 10, "eras": 1000})  	# busy time (w/o wait)
+sdf["service_us"] = sdf["op"].map({"prog": 60, "read": 30, "eras": 1000})  	# busy time (w/o wait)
 sdf["queue_us"] = sdf["latency_us"] - sdf["service_us"]						# wait time
 
 # 11. Total simulated runtime: last completion minus first issue.

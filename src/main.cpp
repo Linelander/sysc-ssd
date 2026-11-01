@@ -2,6 +2,7 @@
 #include <cstring>
 #include <iostream>
 #include <optional>
+#include <sysc/communication/sc_mutex.h>
 #include <sysc/kernel/sc_simcontext.h>
 #include <sysc/kernel/sc_wait.h>
 #include <systemc.h>
@@ -22,6 +23,16 @@ enum State {
 	VALID,	 // programmed and readable
 	INVALID, // programmed and stale
 	ERASED	 // programmable
+};
+
+struct Guard {
+	sc_mutex &m;
+
+	Guard(sc_mutex &mtx) : m(mtx) { m.lock(); }
+	~Guard() { m.unlock(); }
+
+	Guard(const Guard &) = delete;		  // copy constructor overwrite
+	Guard &operator=(const Guard &) = delete; // reassignment ban
 };
 
 struct page {
@@ -74,19 +85,8 @@ std::optional<sc_time> nand_sense(int d, int pl) {
 	return sc_time_stamp() - start;
 }
 
-// Copying data to and from SSD controller and plane register
-std::optional<sc_time> nand_trans(int d) {
-	sc_time start = sc_time_stamp();
-	die &di = drive.dies[d];
-	di.pin_mut.lock();
-	wait(TRANS_TIME);
-	// Don't think we need to actually do anything else here...
-	di.pin_mut.unlock();
-	return sc_time_stamp() - start;
-}
-
 /*
-	Transfer data into SSD controller
+	Transfer data from the SSD controller to plane reg
 	Program them into the page
 */
 std::optional<sc_time> nand_program(int d, int pl, int b, int pa) {
@@ -96,25 +96,20 @@ std::optional<sc_time> nand_program(int d, int pl, int b, int pa) {
 	plane &pln = di.planes[pl];
 	page &pg = pln.blocks[b].pages[pa];
 
-	pln.pl_mut.lock();
+	Guard plg(pln.pl_mut);
 	if (pg.state != ERASED) {
-		pln.pl_mut.unlock();
 		return std::nullopt;
 	}
 
 	// Transfer
 	{
-		di.pin_mut.lock();
+		Guard pin(di.pin_mut);
 		wait(TRANS_TIME);
-		di.pin_mut.unlock();
 	}
 
 	// Program
-	{
-		wait(PROG_TIME);
-		pg.state = VALID;
-		pln.pl_mut.unlock();
-	}
+	wait(PROG_TIME);
+	pg.state = VALID;
 
 	return sc_time_stamp() - start;
 }
@@ -131,23 +126,17 @@ std::optional<sc_time> nand_read(int d, int pl, int b, int pa) {
 	page &pg = pln.blocks[b].pages[pa];
 
 	// Sense
-	{
-		pln.pl_mut.lock();
-		if (pg.state != VALID) {
-			pln.pl_mut.unlock();
-			return std::nullopt;
-		}
-		wait(SENSE_TIME);
+	Guard plg(pln.pl_mut);
+	if (pg.state != VALID) {
+		return std::nullopt;
 	}
+	wait(SENSE_TIME);
 
 	// Transfer
 	{
-		di.pin_mut.lock();
+		Guard pin(di.pin_mut);
 		wait(TRANS_TIME);
-		di.pin_mut.unlock();
 	}
-
-	pln.pl_mut.unlock();
 
 	return sc_time_stamp() - start;
 }
@@ -197,6 +186,7 @@ SC_MODULE(Host) {
 			if (strcmp(op, "eras") == 0) {
 				optime = nand_erase(d, pl, b);
 			}
+
 			// Write timings to output
 			double opt_d = 0;
 			double done = sc_time_stamp() / sc_time(1, SC_US);
@@ -204,13 +194,13 @@ SC_MODULE(Host) {
 				sumlat += *optime;
 				opt_d = *optime / sc_time(1, SC_US);
 				fprintf(csvout,
-					"%s,%s,%d,%d,%d,%d,%.0f,%.0f,%.0f\n",
-					name(), op, d, pl, b, pa, iss, done,
+					"%s,%s,%d,%d,%d,%d,%d,%.0f,%.0f,%.0f\n",
+					name(), op, 1, d, pl, b, pa, iss, done,
 					opt_d);
 			} else { // FAILURE
 				fprintf(csvout,
-					"%s,%s,%d,%d,%d,%d,%.0f,%.0f,\n",
-					name(), op, d, pl, b, pa, iss,
+					"%s,%s,%d,%d,%d,%d,%d,%.0f,%.0f,\n",
+					name(), op, 0, d, pl, b, pa, iss,
 					done); // no latency
 			}
 			line_num++;
@@ -252,7 +242,7 @@ int sc_main(int argc, char **argv) {
 		perror("bad fopen!");
 		return 1;
 	}
-	fprintf(fout, "op,die,plane,block,page,issued_us,completed_"
+	fprintf(fout, "host,op,ok,die,plane,block,page,issued_us,completed_"
 		      "us,latency_us\n");
 
 	Host host("host-1", fin, fout);
