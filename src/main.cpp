@@ -3,6 +3,7 @@
 #include <iostream>
 #include <optional>
 #include <sysc/kernel/sc_simcontext.h>
+#include <sysc/kernel/sc_wait.h>
 #include <systemc.h>
 
 constexpr int PAGES_PER_BLOCK = 64;
@@ -29,24 +30,20 @@ struct page {
 
 struct block {
 	long wear = 0;
-	// struct page pages[PAGES_PER_BLOCK];
 	std::array<page, PAGES_PER_BLOCK> pages;
 };
 
 struct plane {
 	sc_mutex pl_mut; // for parallel plane reads
-	// struct block blocks[BLOCKS_PER_PLANE];
 	std::array<block, BLOCKS_PER_PLANE> blocks;
 };
 
 struct die {
 	sc_mutex pin_mut; // for most things
-	// struct plane planes[PLANES_PER_DIE];
 	std::array<plane, PLANES_PER_DIE> planes;
 };
 
 struct ssd {
-	// struct die dies[DIES_PER_SSD];
 	std::array<die, DIES_PER_SSD> dies;
 };
 
@@ -70,7 +67,7 @@ std::optional<sc_time> nand_erase(int d, int pl, int b) {
 // Copying data to and from page cells and plane register
 std::optional<sc_time> nand_sense(int d, int pl) {
 	sc_time start = sc_time_stamp();
-	plane pln = drive.dies[d].planes[pl];
+	plane &pln = drive.dies[d].planes[pl];
 	pln.pl_mut.lock();
 	wait(SENSE_TIME);
 	pln.pl_mut.unlock();
@@ -88,42 +85,75 @@ std::optional<sc_time> nand_trans(int d) {
 	return sc_time_stamp() - start;
 }
 
-// TODO revamp
+/*
+	Transfer data into SSD controller
+	Program them into the page
+*/
 std::optional<sc_time> nand_program(int d, int pl, int b, int pa) {
 	sc_time start = sc_time_stamp();
-	page &pg = drive.dies[d].planes[pl].blocks[b].pages[pa];
 
-	drive.dies[d].pin_mut.lock();
+	die &di = drive.dies[d];
+	plane &pln = di.planes[pl];
+	page &pg = pln.blocks[b].pages[pa];
 
+	pln.pl_mut.lock();
 	if (pg.state != ERASED) {
-		drive.dies[d].pin_mut.unlock();
+		pln.pl_mut.unlock();
 		return std::nullopt;
 	}
-	wait(PROG_TIME);
-	pg.state = VALID;
-	drive.dies[d].pin_mut.unlock();
+
+	// Transfer
+	{
+		di.pin_mut.lock();
+		wait(TRANS_TIME);
+		di.pin_mut.unlock();
+	}
+
+	// Program
+	{
+		wait(PROG_TIME);
+		pg.state = VALID;
+		pln.pl_mut.unlock();
+	}
 
 	return sc_time_stamp() - start;
 }
 
-// TODO revamp
+/*
+	sense plane cells into plane register
+	transfer them to SSD controller
+*/
 std::optional<sc_time> nand_read(int d, int pl, int b, int pa) {
 	sc_time start = sc_time_stamp();
-	page &pg = drive.dies[d].planes[pl].blocks[b].pages[pa];
 
-	drive.dies[d].pin_mut.lock();
-	if (pg.state != VALID) {
-		drive.dies[d].pin_mut.unlock();
-		return std::nullopt;
+	die &di = drive.dies[d];
+	plane &pln = di.planes[pl];
+	page &pg = pln.blocks[b].pages[pa];
+
+	// Sense
+	{
+		pln.pl_mut.lock();
+		if (pg.state != VALID) {
+			pln.pl_mut.unlock();
+			return std::nullopt;
+		}
+		wait(SENSE_TIME);
 	}
-	wait(READ_TIME);
-	drive.dies[d].pin_mut.unlock();
+
+	// Transfer
+	{
+		di.pin_mut.lock();
+		wait(TRANS_TIME);
+		di.pin_mut.unlock();
+	}
+
+	pln.pl_mut.unlock();
 
 	return sc_time_stamp() - start;
 }
 
 SC_MODULE(Host) {
-	SC_HAS_PROCESS(Host);
+	SC_HAS_PROCESS(Host); // allows custom constructor
 	// members go here
 	FILE *csvin;
 	FILE *csvout;
@@ -200,7 +230,7 @@ int sc_main(int argc, char **argv) {
 	cout << BLOCKS_PER_PLANE << " blocks per plane" << endl;
 	cout << PAGES_PER_BLOCK << " pages per block" << endl;
 
-	if (argc < 2) {
+	if (argc < 4) {
 		cerr << "usage: ./main <trace_filename>";
 		return 1;
 	}
