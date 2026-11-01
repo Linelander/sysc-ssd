@@ -64,24 +64,13 @@ std::optional<sc_time> nand_erase(int d, int pl, int b) {
 	sc_time start = sc_time_stamp();
 	block &bl = drive.dies[d].planes[pl].blocks[b];
 
-	drive.dies[d].pin_mut.lock();
+	Guard pin(drive.dies[d].pin_mut);
 	wait(ERS_TIME);
 	bl.wear++; // TODO scalar. faster for pages but longer for blocks
 	for (int i = 0; i < PAGES_PER_BLOCK; i++) {
 		bl.pages[i].state = ERASED;
 	}
-	drive.dies[d].pin_mut.unlock();
 
-	return sc_time_stamp() - start;
-}
-
-// Copying data to and from page cells and plane register
-std::optional<sc_time> nand_sense(int d, int pl) {
-	sc_time start = sc_time_stamp();
-	plane &pln = drive.dies[d].planes[pl];
-	pln.pl_mut.lock();
-	wait(SENSE_TIME);
-	pln.pl_mut.unlock();
 	return sc_time_stamp() - start;
 }
 
