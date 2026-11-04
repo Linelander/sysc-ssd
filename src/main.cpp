@@ -25,6 +25,7 @@ enum State {
 	ERASED	 // programmable
 };
 
+// raii
 struct Guard {
 	sc_mutex &m;
 
@@ -32,7 +33,7 @@ struct Guard {
 	~Guard() { m.unlock(); }
 
 	Guard(const Guard &) = delete;		  // copy constructor overwrite
-	Guard &operator=(const Guard &) = delete; // reassignment ban
+	Guard &operator=(const Guard &) = delete; // reassignment overwrite
 };
 
 struct page {
@@ -61,7 +62,7 @@ struct ssd {
 struct ssd drive;
 
 /*
-	Locks a plane, then grabs a block, erases it, and wears it.
+	Locks a plane, then grabs a block, erases it, and wears it
 	Then sets all pages in the block to ERASED
 
 	LOCKING ORDER: Plane, die
@@ -73,7 +74,8 @@ std::optional<sc_time> nand_erase(int d, int pl, int b) {
 
 	Guard pin(pln.pl_mut);
 	wait(ERS_TIME);
-	bl.wear++; // TODO scalar. faster for pages but longer for blocks
+	bl.wear++; // TODO will be a scalar that makes ops faster for pages
+		   // but longer for blocks, and can kill NAND if too worn
 	for (int i = 0; i < PAGES_PER_BLOCK; i++) {
 		bl.pages[i].state = ERASED;
 	}
@@ -116,7 +118,7 @@ std::optional<sc_time> nand_program(int d, int pl, int b, int pa) {
 	sense plane cells into plane register
 	transfer them to SSD controller
 
-	LOCKING ORDER: Plane, die
+	LOCKING ORDER: Plane, die (briefly for transfer)
 */
 std::optional<sc_time> nand_read(int d, int pl, int b, int pa) {
 	sc_time start = sc_time_stamp();
@@ -215,7 +217,8 @@ int sc_main(int argc, char **argv) {
 	cout << PAGES_PER_BLOCK << " pages per block" << endl;
 
 	if (argc < 4) {
-		cerr << "usage: ./main <trace_filename>";
+		cerr << "usage: ./main <trace1_filename> <trace1_filename> "
+			"<out_filename>";
 		return 1;
 	}
 
